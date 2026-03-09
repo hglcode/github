@@ -1,0 +1,12 @@
+#!/bin/sh
+if [ $# -lt 1 ]; then
+    aria2c -h
+    exit 0
+fi
+
+self=$(realpath "$0")
+here=$(dirname "$self")
+. $HOME/.xshrc/alias.sh
+
+# shellcheck disable=SC2046
+dl $(sed -r "s|\s+|/$1 |g" "$here/proxy.conf")
