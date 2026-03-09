@@ -1,12 +1,17 @@
 #!/bin/sh
+set -eu
+
 if [ $# -lt 1 ]; then
     aria2c -h
-    exit 0
+    exit 1
 fi
 
-self=$(realpath "$0")
+self=$(readlink -f "$0")
 here=$(dirname "$self")
-. $HOME/.xshrc/alias.sh
+
+np=$(nproc)
+lnp=$((np * 2))
+wnp=$((np * 3))
 
 # shellcheck disable=SC2046
-dl $(sed -r "s|\s+|/$1 |g" "$here/proxy.conf")
+aria2c -c -V -k1M -s$lnp -x16 -j$wnp --max-tries=3 --retry-wait=5 $(sed -r "s|\s+|/$1 |g" "$here/proxy.conf")

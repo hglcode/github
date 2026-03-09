@@ -39,7 +39,7 @@ add_github_hosts() {
 
 get_github_dns() {
     # 从主要源获取
-    dns=$(curl -s https://raw.githubusercontent.com/521xueweihan/GitHub520/refs/heads/main/hosts00 | grep -oP '(\d+\.){3}\d+\s+(\w+\.)+\w+')
+    dns=$(curl -s https://raw.githubusercontent.com/521xueweihan/GitHub520/refs/heads/main/hosts | grep -oP '(\d+\.){3}\d+\s+(\w+\.)+\w+')
 
    # 如果主要源失败，从备用源获取
     if [ -z "$dns" ]; then

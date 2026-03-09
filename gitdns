@@ -2,4 +2,5 @@
 self=$(readlink -f "$0")
 here=$(dirname "$self")
 
-echo 0 | sudo "$here/gitdns.sh"
+# shellcheck disable=SC2068
+echo 0 | sudo -S "$here/gitdns.sh" $@
