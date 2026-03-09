@@ -1,44 +1,5 @@
 #!/bin/sh
+self=$(readlink -f "$0")
+here=$(dirname "$self")
 
-(
-    _update_github_dns() {
-        (
-            set -e
-            hosts="$1"
-            dns="$2"
-            echo 0 | sudo -S sed -zri 's/#\s+GitHub([0-9]+)?\s+Host\s+Start.*#\s+GitHub([0-9]+)?\s+Host\s+End//I' "$hosts" || return 1
-            tail -1 "$hosts" | grep -P '\S+' || dns="$(printf "\n")$dns"
-
-            printf "\n%s" "$dns" | sudo tee -a "$hosts" >/dev/null
-            awk '/\S+/{print $0; n = 0;} /^\s*$/{printf (n > 0) ? "" : $0"\n"; n = 1;}' "$hosts" | sudo tee "$hosts" >/dev/null || echo "Wanning: failed to format hosts file."
-            echo "Update completed successfully."
-        )
-    }
-
-    set -e
-    hosts=/etc/hosts
-    if [ ! -f "$hosts" ]; then
-        echo "Hosts file not found."
-        exit 1
-    fi
-    #dns_locale=$(grep -izoP '#Github\s+Hosts\s+Start[\s\S]+?#Github\s+Hosts\s+End' "$hosts")
-    dns_locale=$(awk 'BEGIN {IGNORECASE = 1}; /^\s*#\s*github([0-9]+)?\s+host[s]?\s+start\s*$/{f = 1}; /\S+/{if (f) print $0}; /^\s*#\s*github([0-9]+)?\s+host[s]?\s+end\s*$/{f = 0};' "$hosts")
-    dns_github=$(curl https://gh.llkk.cc/https://raw.githubusercontent.com/521xueweihan/GitHub520/refs/heads/main/hosts | awk '/\S+/{gsub(/\s+/, " "); print}') ||
-        dns_github=$(curl https://githubhosts.xuanyuan.me | grep -izoP '#Github\s+Hosts\s+Start[\s\S]+?#Github\s+Hosts\s+End' | tr -d '\0' | sed 's|\\n|\n|g' | awk '/\S+/{print $0}')
-    if [ -z "$dns_github" ]; then
-        echo "No Github DNS entries found."
-        exit 1
-    fi
-    if [ -z "$dns_locale" ]; then
-        echo "Wanning: No local Github DNS entries found."
-        _update_github_dns "$hosts" "$dns_github" || exit 1
-        exit 0
-    fi
-    dns_l=$(echo "$dns_locale" | sed 's|^\s*#.*||g' | grep -vP '^\s*$')
-    dns_g=$(echo "$dns_github" | sed 's|^\s*#.*||g' | grep -vP '^\s*$')
-    if [ "$dns_l" = "$dns_g" ]; then
-        echo "Github dns is already up to date."
-        exit 0
-    fi
-    _update_github_dns "$hosts" "$dns_github"
-)
+echo 0 | sudo "$here/gitdns.sh"
