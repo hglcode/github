@@ -1,5 +1,7 @@
 #!/bin/sh
 
+set -eu
+
 # 检查sudo权限
 if [ "$(id -u)" -ne 0 ]; then
     echo "This script requires sudo privileges."
@@ -10,8 +12,6 @@ cleanup_github_hosts() {
     hosts=$1
     # 移除所有Github Hosts相关条目
     sed -i -E '/^[[:space:]]*#[[:space:]]*[gG]ithub[[:space:]]+[hH]osts[[:space:]]+[sS]tart[[:space:]]*$/,/^[[:space:]]*#[[:space:]]*[gG]ithub[[:space:]]+[hH]osts[[:space:]]+[eE]nd[[:space:]]*$/d' "$hosts"
-    # 移除多余的空行
-    #awk 'NF {n=0; print} !NF {if (!n) print; n=1}' "$hosts" > "$hosts.tmp" && mv "$hosts.tmp" "$hosts"
 }
 
 add_github_hosts() {
@@ -34,9 +34,7 @@ add_github_hosts() {
     } >> "$hosts"
 
     # 移除多余的空行
-    tmp=$(mktemp)
-    awk 'NF {n=0; print} !NF {if (!n) print; n=1}' "$hosts" > "$tmp" && mv "$tmp" "$hosts"
-    [ -f "$tmp" ] && rm -f "$tmp"
+    awk 'NF {n=0; print} !NF {if (!n) print; n=1}' "$hosts" | tee "$hosts"
 }
 
 get_github_dns() {
@@ -49,8 +47,6 @@ get_github_dns() {
     if [ -z "$dns" ]; then
         dns=$(wget -q -O - "$uri_b" | grep -ioE '#Github\s+Hosts\s+Start.*?#Github\s+Hosts\s+End' | grep -ioE '(([0-9]+\.){3}[0-9]+|[0-9a-f:]{8,}:[0-9a-f]{1,4})\s+(\w+\.)+\w+')
     fi
-    # 提取包含IPv4和IPv6的Github Hosts记录
-    dns=$(wget -q -O - "$uri_b" | grep -ioE '#Github\s+Hosts\s+Start.*?#Github\s+Hosts\s+End' | grep -ioE '(([0-9]+\.){3}[0-9]+|[0-9a-f:]{8,}:[0-9a-f]{1,4})\s+(\w+\.)+\w+')
 
     echo "$dns"
 }
@@ -77,7 +73,7 @@ main() {
     echo "Getting latest GitHub DNS entries..."
     # shellcheck disable=SC2068
     dns_github=$(get_github_dns $@)
-
+    echo "GitHub DNS entries retrieved successfully."
     # 检查是否获取到DNS条目
     if [ -z "$dns_github" ]; then
         echo "Error: Failed to get GitHub DNS entries"
