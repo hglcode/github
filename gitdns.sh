@@ -72,15 +72,15 @@ main() {
 
     echo "Getting latest GitHub DNS entries..."
     # shellcheck disable=SC2068
-    dns_github=$(get_github_dns $@)
-    echo "GitHub DNS entries retrieved successfully."
+    dns_github=$(get_github_dns $@) && echo "GitHub DNS entries retrieved successfully."
+
     # 检查是否获取到DNS条目
     if [ -z "$dns_github" ]; then
-        echo "Error: Failed to get GitHub DNS entries"
+        echo "GitHub DNS entries is empty. Please check the source."
         exit 1
     fi
 
-    dns_local=$(sed -nE '/^[[:space:]]*#[[:space:]]*[gG]ithub[[:space:]]+[hH]osts[[:space:]]+[sS]tart[[:space:]]*$/,/^[[:space:]]*#[[:space:]]*[gG]ithub[[:space:]]+[hH]osts[[:space:]]+[eE]nd[[:space:]]*$/p' "$hosts" | grep -vE '^\s*#')
+    dns_local=$(sed -nE '/^[[:space:]]*#[[:space:]]*[gG]ithub[[:space:]]+[hH]osts[[:space:]]+[sS]tart[[:space:]]*$/,/^[[:space:]]*#[[:space:]]*[gG]ithub[[:space:]]+[hH]osts[[:space:]]+[eE]nd[[:space:]]*$/p' "$hosts" | grep -vE '^\s*#' || true)
     [ "$dns_local" = "$dns_github" ] && {
         echo "GitHub DNS entries are already up to date. No changes needed."
         exit 0
