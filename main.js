@@ -3,8 +3,8 @@ async function main() {
     const uri_test = 'https://raw.githubusercontent.com/hglcode/xshrc/refs/heads/main/README.md';
     try {
         const rsp = await fetch('https://api.akams.cn/github');
-        const data = (await rsp.json())?.data?.sort((a, b) => a.latency < b.latency ? -1 : 1);
-        const proxies = data.map((l) => l.url);
+        const data = (await rsp.json())?.data?.sort((a, b) => (a.latency < b.latency ? -1 : 1));
+        const proxies = (data || []).map((l) => l.url);
         const ps = proxies.map((l) => fetch(`${l}/${uri_test}`)
             .then((r) => (uri ? `${l}/${uri}` : l))
             .catch((err) => {
