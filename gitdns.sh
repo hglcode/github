@@ -18,16 +18,9 @@ add_github_hosts() {
     hosts=$1
     dns=$2
 
-    # 确保文件末尾有换行符
-    if [ -s "$hosts" ]; then
-        if [ "$(tail -c 1 "$hosts")" != "\n" ]; then
-            echo >> "$hosts"
-        fi
-    fi
-
-
     # 添加DNS条目
     {
+        echo ""
         echo "# Github Hosts Start"
         echo "$dns"
         echo "# Github Hosts End"
@@ -96,6 +89,7 @@ main() {
 
     echo "Adding latest GitHub entries..."
     add_github_hosts "$hosts" "$dns_github"
+    echo "$dns_github"
 
     echo "GitHub DNS entries updated successfully!"
 }
