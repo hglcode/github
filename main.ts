@@ -1,13 +1,18 @@
+interface Item {
+    url: string;
+    latency: number;
+    speed: number;
+}
 async function main() {
     const uri = process.argv.length > 2 ? process.argv[2] : null;
     const uri_test = 'https://raw.githubusercontent.com/hglcode/xshrc/refs/heads/main/README.md';
 
     try {
         const rsp = await fetch('https://api.akams.cn/github');
-        const data = ((await rsp.json()) as { data?: { url: string; latency: number }[] })?.data?.sort(
-            (a: { latency: number }, b: { latency: number }) => (a.latency < b.latency ? -1 : 1),
+        const data = ((await rsp.json()) as { data?: Item[] })?.data?.sort((a: Item, b: Item) =>
+            a.speed === b.speed ? (a.latency < b.latency ? -1 : 1) : a.speed > b.speed ? -1 : 1,
         );
-        const proxies = (data || []).map((l: { url: string }) => l.url);
+        const proxies = (data || []).map((l: Item) => l.url);
         const ps = proxies.map((l: string) =>
             fetch(`${l}/${uri_test}`)
                 .then((r) => (uri ? `${l}/${uri}` : l))
