@@ -11,7 +11,7 @@ fi
 cleanup_github_hosts() {
     hosts=$1
     # 移除所有Github Hosts相关条目
-    sed -i -E '/^[[:space:]]*#[[:space:]]*[gG]ithub[[:space:]]+[hH]osts[[:space:]]+[sS]tart[[:space:]]*$/,/^[[:space:]]*#[[:space:]]*[gG]ithub[[:space:]]+[hH]osts[[:space:]]+[eE]nd[[:space:]]*$/d' "$hosts"
+    sed -i -E '/^[[:space:]]*#[[:space:]]*github[[:space:]]+hosts[[:space:]]+start[[:space:]]*$/,/^[[:space:]]*#[[:space:]]*github[[:space:]]+hosts[[:space:]]+end[[:space:]]*$/d' "$hosts"
 }
 
 add_github_hosts() {
@@ -21,13 +21,14 @@ add_github_hosts() {
     # 添加DNS条目
     {
         echo ""
-        echo "# Github Hosts Start"
+        echo "# github hosts start"
         echo "$dns"
-        echo "# Github Hosts End"
+        echo "# github hosts end"
     } >> "$hosts"
 
     # 移除多余的空行
-    awk 'NF {n=0; print} !NF {if (!n) print; n=1}' "$hosts" | tee "$hosts"
+    tmp=$(mktemp)
+    awk 'NF {n=0; print} !NF {if (!n) print; n=1}' "$hosts" > "$tmp" && cat "$tmp" | tee "$hosts" && rm "$tmp"
 }
 
 get_github_dns() {
@@ -46,7 +47,7 @@ get_github_dns() {
 
 check_github_hosts() {
     hosts=$1
-    if grep -q -iE '^\s*#\s*Github\s+Hosts\s+Start\s*$' "$hosts"; then
+    if grep -q -iE '^\s*#\s*github\s+hosts\s+start\s*$' "$hosts"; then
         return 0  # 存在
     else
         return 1  # 不存在
@@ -73,7 +74,7 @@ main() {
         exit 1
     fi
 
-    dns_local=$(sed -nE '/^[[:space:]]*#[[:space:]]*[gG]ithub[[:space:]]+[hH]osts[[:space:]]+[sS]tart[[:space:]]*$/,/^[[:space:]]*#[[:space:]]*[gG]ithub[[:space:]]+[hH]osts[[:space:]]+[eE]nd[[:space:]]*$/p' "$hosts" | grep -vE '^\s*#' || true)
+    dns_local=$(sed -nE '/^[[:space:]]*#[[:space:]]*github[[:space:]]+hosts[[:space:]]+start[[:space:]]*$/,/^[[:space:]]*#[[:space:]]*github[[:space:]]+hosts[[:space:]]+end[[:space:]]*$/p' "$hosts" | grep -vE '^\s*#' || true)
     [ "$dns_local" = "$dns_github" ] && {
         echo "GitHub DNS entries are already up to date. No changes needed."
         exit 0

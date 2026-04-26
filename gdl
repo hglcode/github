@@ -14,4 +14,4 @@ lnp=$((np * 2))
 wnp=$((np * 3))
 
 # shellcheck disable=SC2046
-aria2c -c -V -k1M -s$lnp -x16 -j$wnp --max-tries=3 --retry-wait=5 $(sed -r "s|\s+|/$1 |g" "$here/proxy.conf")
+aria2c -c -V -k1M -s$lnp -x16 -j$wnp --max-tries=3 --retry-wait=5 $(sed -r "s|\s+|/$1 |g" "$here/proxy.conf") $1
