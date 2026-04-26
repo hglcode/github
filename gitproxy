@@ -1,5 +1,15 @@
 #!/bin/sh
-self=$(readlink -f "$0")
-here=$(dirname "$self")
-node "$here/main.js" 2> /dev/null | tee "$here/proxy.conf"
+set -eu
+here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
 
+cache="$here/proxy.conf"
+
+case "${1:-update}" in
+    update)
+        node "$here/main.js" 2> /dev/null | tee "$cache"
+        ;;
+    list)
+        [ -f "$here/proxy.conf" ] && cat "$cache" || node "$here/main.js" 2> /dev/null | tee "$cache"
+        ;;
+    *) ;;
+esac
