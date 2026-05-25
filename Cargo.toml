@@ -1,0 +1,18 @@
+[package]
+name = "app"
+version = "0.1.0"
+edition = "2024"
+
+[profile.release]
+opt-level = 3          # 优化级别，3为最高优化
+lto = "fat"            # 启用链接时优化
+codegen-units = 1      # 代码生成单元数量
+panic = "abort"        # panic时直接终止程序
+strip = true           # 移除调试符号
+
+[dependencies]
+futures = "0"
+reqwest = { version = "0", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
