@@ -9,7 +9,7 @@ case "${1:-update}" in
         "$here/hubs" 2> /dev/null | tee "$cache"
         ;;
     list)
-        [ -f "$here/proxy.conf" ] && cat "$cache" || "$here/hubs" 2> /dev/null | tee "$cache"
+        [ -f "$here/proxy.conf" ] && { cat "$cache" || "$here/hubs" 2> /dev/null | tee "$cache"; }
         ;;
     *) ;;
 esac

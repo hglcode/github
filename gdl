@@ -6,8 +6,7 @@ if [ $# -lt 1 ]; then
     exit 1
 fi
 
-self=$(readlink -f "$0")
-here=$(dirname "$self")
+here=$(CDPATH=; cd -- "$(dirname -- "$0")" && pwd -P)
 
 np=$(nproc)
 lnp=$((np * 2))

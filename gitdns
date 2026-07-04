@@ -1,5 +1,5 @@
 #!/bin/sh
-here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+here=$(CDPATH=; cd -- "$(dirname -- "$0")" && pwd -P)
 
 # shellcheck disable=SC2068
 echo 0 | sudo -S "$here/gitdns.sh" $@
