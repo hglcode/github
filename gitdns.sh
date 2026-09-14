@@ -4,7 +4,7 @@ set -eu
 
 # 检查sudo权限
 if [ "$(id -u)" -ne 0 ]; then
-    echo "This script requires sudo privileges."
+    echo "This script requires sudo privileges." >&2
     exit 1
 fi
 
@@ -60,7 +60,7 @@ main() {
 
     # 检查hosts文件是否存在
     if [ ! -f "$hosts" ]; then
-        echo "Error: Hosts file not found at $hosts"
+        echo "Error: Hosts file not found at $hosts" >&2
         exit 1
     fi
 
@@ -70,7 +70,7 @@ main() {
 
     # 检查是否获取到DNS条目
     if [ -z "$dns_github" ]; then
-        echo "GitHub DNS entries is empty. Please check the source."
+        echo "GitHub DNS entries is empty. Please check the source." >&2
         exit 1
     fi
 
