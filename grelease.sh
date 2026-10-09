@@ -10,8 +10,8 @@ case "$1" in
     ;;
 esac
 
-command -v curl >/dev/null || { echo "curl command not found!"; exit 1; }
-command -v jq >/dev/null || { echo "jq command not found!"; exit 1; }
+command -v curl >/dev/null || { echo "curl command not found!" >&2; exit 1; }
+command -v jq >/dev/null || { echo "jq command not found!" >&2; exit 1; }
 
 # 提取 owner/repo
 repo_path="${1#https://github.com/}"

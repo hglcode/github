@@ -1,3 +1,4 @@
+use futures::TryStreamExt;
 use futures::stream::{self, StreamExt};
 use regex::Regex;
 use reqwest::header;
@@ -5,16 +6,11 @@ use std::env;
 use std::error::Error;
 use std::time::{Duration, Instant};
 
-/// 运行配置。所有字段都能通过同名 `GMIRROR_*` 环境变量覆盖默认值：
-///
-/// - `GMIRROR_ORIGIN`         站点源，默认 https://github.akams.cn
-/// - `GMIRROR_FALLBACK_CHUNK` 首页发现失败时兜底的 chunk URL
-/// - `GMIRROR_PROBE`          不传参数时用来探测镜像可用性的文件
-/// - `GMIRROR_CONCURRENCY`     并发测活上限，默认 16
-/// - `GMIRROR_CHUNK_RE`       从首页 HTML 里找 chunk 的正则
-/// - `GMIRROR_MIRROR_RE`      从 chunk JS 里抠 mirror value 的正则（须含 1 个捕获组）
-///
-/// 注意：本代码使用了 let-chain 语法，要求 Rust 1.82+ (MSRV: 1.82)
+// [新增] 带宽探测常量配置
+const MAX_PROBE_BYTES: u64 = 256 * 1024; // 最多读取 256KB 用于测速
+const PROBE_TIMEOUT: Duration = Duration::from_secs(3); // 单节点测速最长耗时
+
+/// 运行配置。所有字段都能通过同名 `GMIRROR_*` 环境变量覆盖默认值
 #[derive(Debug, Clone)]
 struct Config {
     site_origin: String,
@@ -31,7 +27,8 @@ impl Default for Config {
             site_origin: "https://github.akams.cn".into(),
             fallback_chunk: "https://github.akams.cn/_next/static/chunks/096f2b9eccbdd6b4.js"
                 .into(),
-            probe_path: "https://raw.githubusercontent.com/torvalds/linux/master/README".into(),
+            probe_path: "https://raw.githubusercontent.com/microsoft/vscode/main/package-lock.json"
+                .into(),
             concurrency: 16,
             chunk_re: r#"/_next/static/chunks/[A-Za-z0-9_\-]+\.js"#.into(),
             mirror_re: r#"\{\s*label:\s*"[^"]+?",\s*value:\s*"([^"]+?)"\s*\}"#.into(),
@@ -57,7 +54,6 @@ impl Config {
         {
             cfg.concurrency = n;
         }
-
         if let Ok(v) = env::var("GMIRROR_CHUNK_RE") {
             cfg.chunk_re = v;
         }
@@ -81,50 +77,38 @@ async fn main() -> Result<(), Box<dyn Error>> {
         )
         .default_headers({
             let mut h = header::HeaderMap::new();
-            // [修复] 修正非法的 MIME 类型
             h.insert(header::ACCEPT, header::HeaderValue::from_static("*/*"));
             h
         })
         .timeout(Duration::from_secs(10))
         .build()?;
 
-    // 1. 自动发现 chunk，抠出 mirror 列表
     let mirrors = fetch_mirrors(&client, &cfg).await?;
     if mirrors.is_empty() {
         eprintln!("未找到任何镜像");
         return Ok(());
     }
-    eprintln!("发现 {} 个镜像，开始测活...", mirrors.len());
+    eprintln!("发现 {} 个镜像，开始带宽测速...", mirrors.len());
 
-    // 2. 探测目标：传了命令行参数就用它，否则用内置 probe
     let raw_probe = uri.clone().unwrap_or_else(|| cfg.probe_path.clone());
-    // [修复] 规范化 probe 路径，防止用户传入完整 URL 导致拼接错误
     let probe_path = normalize_probe_path(&raw_probe);
 
-    // 3. 限并发测活，记录每个成功响应的 TTFB (首字节时间)
-    let results: Vec<Option<(String, Duration)>> = stream::iter(mirrors.into_iter().map(|m| {
+    // [重构] 测速返回结果改为 (Mirror URL, 速度 Bytes/s)
+    let results: Vec<Option<(String, f64)>> = stream::iter(mirrors.into_iter().map(|m| {
         let client = client.clone();
         let probe_path = probe_path.clone();
         async move {
-            // 确保拼接时中间只有一个 '/'
             let url = format!("{}/{}", m.trim_end_matches('/'), probe_path);
-            let start = Instant::now();
 
-            // [优化] 只发送到收到 Header 为止 (TTFB)，不下载整个 body，大幅提升大文件测速效率
-            match client.get(&url).send().await {
-                Ok(resp) => match resp.error_for_status() {
-                    Ok(_) => {
-                        // 收到 header 即视为连通，记录耗时后立即丢弃 response 中断下载
-                        let elapsed = start.elapsed();
-                        Some((m, elapsed))
-                    }
-                    Err(e) => {
-                        eprintln!("  [http ] {}: {}", m, e);
-                        None
-                    }
-                },
-                Err(e) => {
-                    eprintln!("  [conn ] {}: {}", m, e);
+            // 使用 tokio::time::timeout 包裹，防止低速节点阻塞并发池
+            match tokio::time::timeout(PROBE_TIMEOUT, measure_bandwidth(&client, &url)).await {
+                Ok(Ok(speed)) => Some((m, speed)),
+                Ok(Err(e)) => {
+                    eprintln!("  [err  ] {}: {}", m, e);
+                    None
+                }
+                Err(_) => {
+                    eprintln!("  [slow ] {}: 测速超时 (>{:?})", m, PROBE_TIMEOUT);
                     None
                 }
             }
@@ -134,22 +118,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
     .collect()
     .await;
 
-    // 4. 过滤成功项，按本次实测耗时升序
-    let mut ok: Vec<(String, Duration)> = results.into_iter().flatten().collect();
-    ok.sort_by_key(|(_, d)| *d);
+    // [重构] 按带宽降序排列
+    let mut ok: Vec<(String, f64)> = results.into_iter().flatten().collect();
+    ok.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
 
-    // [优化] 在 stderr 打印测速详情，让用户直观看到延迟差异
     if !ok.is_empty() {
-        eprintln!("--- 测速结果 (按延迟升序) ---");
-        for (m, d) in &ok {
-            eprintln!("  ✓ {:<40} {}ms", m, d.as_millis());
+        eprintln!("--- 测速结果 (按带宽降序) ---");
+        for (m, speed) in &ok {
+            if *speed >= 1024.0 * 1024.0 {
+                eprintln!("  ✓ {:<40} {:.2} MB/s", m, speed / (1024.0 * 1024.0));
+            } else {
+                eprintln!("  ✓ {:<40} {:.2} KB/s", m, speed / 1024.0);
+            }
         }
         eprintln!("----------------------------");
     }
 
-    // 5. 输出。语义：
-    //    - 传了 uri：输出 {mirror}/{uri} 列表，末尾追加原始 uri
-    //    - 未传 uri：输出可用 mirror 本身
     let mut links: Vec<String> = match &uri {
         Some(_) => ok
             .into_iter()
@@ -158,37 +142,58 @@ async fn main() -> Result<(), Box<dyn Error>> {
         None => ok.into_iter().map(|(m, _)| m).collect(),
     };
     if let Some(u) = &uri {
-        links.push(u.clone()); // 兜底原始链接
+        links.push(u.clone());
     }
 
     if links.is_empty() {
-        eprintln!("所有镜像均不可达");
+        eprintln!("所有镜像均不可达或带宽过低");
         return Ok(());
     }
 
-    // 最终结果输出到 stdout，方便脚本管道提取
     println!("{}", links.join(" "));
     Ok(())
 }
 
-/// [新增] 规范化 probe 路径
-/// 如果用户传入的是完整 URL (如 https://github.com/user/repo/blob/main/README.md)
-/// 则提取出 `user/repo/blob/main/README.md`，避免与 mirror 域名错误拼接。
+/// [新增] 实际下载数据并计算带宽 (Bytes/sec)
+/// 最多读取 MAX_PROBE_BYTES 字节后立即中断，避免浪费流量
+async fn measure_bandwidth(
+    client: &reqwest::Client,
+    url: &str,
+) -> Result<f64, Box<dyn Error + Send + Sync>> {
+    let resp = client.get(url).send().await?.error_for_status()?;
+    let mut stream = resp.bytes_stream(); // 启用 stream feature 后即可正常调用
+
+    let start = Instant::now();
+    let mut total_bytes: u64 = 0;
+
+    // try_next() 自动解包 Result，chunk 类型被明确推断为 Bytes
+    while let Some(chunk) = stream.try_next().await? {
+        total_bytes += chunk.len() as u64;
+        if total_bytes >= MAX_PROBE_BYTES {
+            break;
+        }
+    }
+
+    let elapsed = start.elapsed();
+    if elapsed.as_secs_f64() == 0.0 || total_bytes == 0 {
+        return Err("零字节或零耗时".into());
+    }
+
+    Ok(total_bytes as f64 / elapsed.as_secs_f64())
+}
+
 fn normalize_probe_path(raw: &str) -> String {
-    if raw.starts_with("http://") || raw.starts_with("https://") {
-        // 简单的字符串分割提取 path，避免引入额外的 url crate 依赖
-        if let Some(idx) = raw.find("://") {
-            let after_scheme = &raw[idx + 3..];
-            if let Some(path_idx) = after_scheme.find('/') {
-                return after_scheme[path_idx + 1..].to_string();
-            }
+    if (raw.starts_with("http://") || raw.starts_with("https://"))
+        && let Some(idx) = raw.find("://")
+    {
+        let after_scheme = &raw[idx + 3..];
+        if let Some(path_idx) = after_scheme.find('/') {
+            return after_scheme[path_idx + 1..].to_string();
         }
     }
     raw.trim_start_matches('/').to_string()
 }
 
-/// 抓首页 HTML，找出 chunk URL，逐个下载并尝试抠 mirror 列表。
-/// 第一个命中的 chunk 即为数据源；全部失败则用 fallback。
 async fn fetch_mirrors(
     client: &reqwest::Client,
     cfg: &Config,
@@ -198,14 +203,12 @@ async fn fetch_mirrors(
 
     let mut candidates: Vec<String> = Vec::new();
 
-    // [修复] 消除变量遮蔽 (shadowing)，使用不同名称区分 Response 和 String
     if let Ok(resp) = client.get(format!("{}/", cfg.site_origin)).send().await
         && let Ok(resp) = resp.error_for_status()
         && let Ok(html) = resp.text().await
     {
         for cap in chunk_re.captures_iter(&html) {
             let path = cap.get(0).unwrap().as_str();
-            // chunk 路径可能是绝对 URL（带 CDN 域名）也可能是站内相对路径
             let url = if path.starts_with("http://") || path.starts_with("https://") {
                 path.to_string()
             } else {

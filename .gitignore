@@ -3,3 +3,4 @@ target
 *.d.ts
 *.map
 *.tsbuildinfo
+/z.*
