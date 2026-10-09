@@ -1,15 +1,16 @@
 #!/bin/sh
 set -eu
-here=$(CDPATH=; cd -- "$(dirname -- "$0")" && pwd -P)
 
-cache="$here/proxy.conf"
+HERE=$(CDPATH=; cd -- "$(dirname -- "$0")" && pwd -P)
+
+CACHE="$HERE/proxy.conf"
 
 case "${1:-update}" in
     update)
-        "$here/hubs" 2> /dev/null | tee "$cache"
+        "$HERE/gmirror" 2> /dev/null | tee "$CACHE"
         ;;
     list)
-        [ -f "$here/proxy.conf" ] && { cat "$cache" || "$here/hubs" 2> /dev/null | tee "$cache"; }
+        [ -f "$HERE/proxy.conf" ] && { cat "$CACHE" || "$HERE/gmirror" 2> /dev/null | tee "$CACHE"; }
         ;;
     *) ;;
 esac
