@@ -1,28 +1,45 @@
 #!/bin/sh
 set -eu
+help() {
+    echo "Usage: $0 or $(basename "$0") <https://github.com/owner/repo>" >&2
+}
+need() {
+    command -v "$1" >/dev/null 2>&1 || {
+        echo "Error: $1 is not installed." >&2
+        exit 1
+    }
+}
+need curl
+need jq
 
-# 验证参数格式
+[ $# -lt 1 ] && {
+    help
+    exit 1
+}
+
 case "$1" in
-  "https://github.com/"*) ;;
-  *)
-    echo "Usage: $0 <https://github.com/owner/repo>" >&2
+"https://github.com/"*) ;;
+*)
+    help
     exit 1
     ;;
 esac
 
-command -v curl >/dev/null || { echo "curl command not found!" >&2; exit 1; }
-command -v jq >/dev/null || { echo "jq command not found!" >&2; exit 1; }
-
-# 提取 owner/repo
 repo_path="${1#https://github.com/}"
-# 去除可能的尾部斜杠
 repo_path="${repo_path%/}"
+uri="https://api.github.com/repos/${repo_path}/releases?per_page=6"
 
-# 构建 API URL（可调整 per_page 为所需数量）
-api_url="https://api.github.com/repos/${repo_path}/releases?per_page=6"
+# 攒 curl 参数：无 token 时匿名，有 token 时带鉴权头
+set -- -s -f
+if [ -n "${GITHUB_TOKEN:-}" ]; then
+  set -- "$@" \
+    -H "Authorization: Bearer $GITHUB_TOKEN" \
+    -H "Accept: application/vnd.github+json"
+fi
 
-# 请求并过滤下载链接
-curl -s -f "$api_url" | jq -r '.[] | .assets[]? | .browser_download_url' || {
-  echo "Error: Failed to fetch releases for ${api_url}" >&2
+if ! rsp=$(curl "$@" "$uri"); then
+  echo "Error: Failed to fetch releases for ${uri}" >&2
   exit 1
-}
+fi
+
+printf '%s\n' "$rsp" | jq -r '.[] | .assets[]? | .browser_download_url'

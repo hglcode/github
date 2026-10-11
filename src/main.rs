@@ -8,7 +8,7 @@ use std::time::{Duration, Instant};
 
 // [新增] 带宽探测常量配置
 const MAX_PROBE_BYTES: u64 = 256 * 1024; // 最多读取 256KB 用于测速
-const PROBE_TIMEOUT: Duration = Duration::from_secs(3); // 单节点测速最长耗时
+const PROBE_TIMEOUT: Duration = Duration::from_secs(15); // 单节点测速最长耗时
 
 /// 运行配置。所有字段都能通过同名 `GMIRROR_*` 环境变量覆盖默认值
 #[derive(Debug, Clone)]
